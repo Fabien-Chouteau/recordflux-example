@@ -1,0 +1,39 @@
+package RSP is
+
+   type Request_Kind is (Request_Store        => 21,
+                         Request_Get          => 254)
+      with Size => 8;
+
+   type Payload_Length is range 0 .. 255
+      with Size => 8;
+
+   type Request_Message is
+      message
+         Kind    : Request_Kind
+            then Length if Kind = Request_Store;
+
+         Length  : Payload_Length
+            then Payload with Size => Length * 8;
+
+         Payload : Opaque;
+
+      end message;
+
+   type Stack_Identifier is range 0 .. 9
+      with Size => 8;
+
+   type Request_Message_With_Id is
+      message
+         Stack_Id : Stack_Identifier;
+
+         Kind    : Request_Kind
+            then Length if Kind = Request_Store;
+
+         Length  : Payload_Length
+            then Payload with Size => Length * 8;
+
+         Payload : Opaque;
+
+      end message;
+
+end RSP;
