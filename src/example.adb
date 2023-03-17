@@ -42,9 +42,9 @@ is
       Request_Message.Set_Length (Context, 4);
       Request_Message.Set_Payload (Context, (1, 2, 3, 4));
 
-      pragma Warnings (Off, """Context"" is set by ""Take_Buffer"" but not used after the call");
       Request_Message.Take_Buffer (Context, Buffer);
-      pragma Warnings (On, """Context"" is set by ""Take_Buffer"" but not used after the call");
+
+      pragma Assert (not Request_Message.Has_Buffer (Context));
 
       Print_Buffer (Buffer.all);
 
@@ -72,9 +72,8 @@ is
       Request_Message_With_Id.Set_Length (Context, 4);
       Request_Message_With_Id.Set_Payload (Context, (1, 2, 3, 4));
 
-      pragma Warnings (Off, """Context"" is set by ""Take_Buffer"" but not used after the call");
       Request_Message_With_Id.Take_Buffer (Context, Buffer);
-      pragma Warnings (On, """Context"" is set by ""Take_Buffer"" but not used after the call");
+      pragma Assert (not Request_Message_With_Id.Has_Buffer (Context));
 
       Print_Buffer (Buffer.all);
 
