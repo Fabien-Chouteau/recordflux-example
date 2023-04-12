@@ -4,13 +4,12 @@ package RSP is
                          Answer_Msg  => 1)
       with Size => 8;
 
-   type Request_Kind is (Request_Select_Stack => 0,
-                         Request_Store        => 1,
-                         Request_Get          => 2)
+   type Request_Kind is (Request_Store => 1,
+                         Request_Get   => 2)
       with Size => 8;
 
-   type Answer_Kind is (Answer_Data  => 0,
-                        Answer_Error => 1)
+   type Answer_Kind is (Answer_Data   => 0,
+                        Answer_Result => 1)
       with Size => 8;
 
    type Length is range 0 .. 255
@@ -21,22 +20,34 @@ package RSP is
 
    type Request_Message is
       message
+         Stack_Id : Stack_Identifier;
          Kind : Request_Kind
-            then Length if Kind = Request_Store
-            then Stack_Id if Kind = Request_Select_Stack;
+            then Length   if Kind = Request_Store
+            then null     if Kind = Request_Get;
          Length : Length
             then Payload with Size => Length * 8;
-         Payload : Opaque;
-         Stack_Id : Stack_Identifier;
+         Payload : Opaque
+            then null;
       end message;
+
+   type Server_Result_Kind is (Ok,
+                               Invalid_Packet,
+                               Got_Answer_Packet,
+                               Got_Exception,
+                               Stack_Full)
+      with Size => 8;
 
    type Answer_Message is
       message
          Kind : Answer_Kind
-            then Length if Kind = Answer_Data;
+            then Length if Kind = Answer_Data
+            then Server_Result if Kind = Answer_Result;
          Length : Length
             then Payload with Size => Length * 8;
-         Payload : Opaque;
+         Payload : Opaque
+            then null;
+         Server_Result : Server_Result_Kind
+            then null;
       end message;
 
    type RSP_Message is
@@ -44,86 +55,58 @@ package RSP is
          Kind : Message_Kind
             then Request if Kind = Request_Msg
             then Answer if Kind = Answer_Msg;
-         Request : Request_Message;
+         Request : Request_Message
+            then null;
          Answer  : Answer_Message;
       end message;
 
-   type Server_Error_Kind is (Invalid_Packet,
-                              Got_Answer_Packet,
-                              Stack_Id_Not_Set,
-                              Got_Exception,
-                              Stack_Full)
+   type Store_Result is (Store_Ok, Store_Fail)
       with Size => 8;
 
    generic
       Chan : Channel with Readable, Writable;
-      with function Store_Data (Stack_Id : Stack_Identifier; Data : Opaque) return Boolean;
-      with function Handle_Error (Err : Server_Error_Kind) return Boolean;
+      with function Store_Data (Stack_Id : Stack_Identifier; Data : Opaque) return Store_Result;
    session Server is
-      Msg : RSP_Message;
+      Msg    : RSP_Message;
       Answer : RSP_Message;
-      Id : Stack_Identifier;
+      Result : Server_Result_Kind;
    begin
 
-      state Receive_Stack_Select is
+      state Receive_Request is
       begin
          Chan'Read(Msg);
       transition
-         goto Verify_Stack_Select
-      end Receive_Stack_Select;
-
-      state Verify_Stack_Select is
-      begin
-      transition
-         goto Invalid_Packet_Error if Msg'Valid = False
+         goto Invalid_Packet_Error    if Msg'Valid = False
          goto Got_Answer_Packet_Error if Msg.Kind /= Request_Msg
-         goto Stack_Id_Not_Set_Error if Msg.Request_Kind /= Request_Select_Stack
-         goto Select_Stack
-      end Verify_Stack_Select;
-
-      state Select_Stack is
-      begin
-         Id := Msg.Request_Stack_Id;
-      transition
-         goto Receive_Data_Request
-      exception
+         goto Store                   if Msg.Request_Kind = Request_Store
+         goto Get                     if Msg.Request_Kind = Request_Get
          goto Exception_Error
-      end Select_Stack;
-
-      state Receive_Data_Request is
-      begin
-         Chan'Read(Msg);
-      transition
-         goto Verify_Data_Request
-      end Receive_Data_Request;
-
-      state Verify_Data_Request is
-      begin
-      transition
-         goto Invalid_Packet_Error if Msg'Valid = False
-         goto Got_Answer_Packet_Error if Msg.Kind /= Request_Msg
-         goto Store if Msg.Request_Kind = Request_Store
-         goto Get if Msg.Request_Kind = Request_Get
-         goto Select_Stack if Msg.Request_Kind = Request_Select_Stack
-         goto Exception_Error
-      end Verify_Data_Request;
+      end Receive_Request;
 
       state Store is
-         Store_Data_Error : Boolean;
+         St_Result : Store_Result;
       begin
-         Store_Data_Error := Store_Data (Id, Msg.Request_Payload);
+         St_Result := Store_Data (Msg.Request_Stack_Id, Msg.Request_Payload);
       transition
-         goto Stack_Full_Error if Store_Data_Error
-         goto Receive_Data_Request
+         goto Stack_Full_Error if St_Result = Store_Fail
+         goto Answer_Success   if St_Result = Store_Ok
+         goto Receive_Request
       exception
          goto Exception_Error
       end Store;
+
+      state Answer_Success is
+      begin
+         Result := Ok;
+      transition
+         goto Setup_Answer
+      end Answer_Success;
 
       state Get is
       begin
          Answer := RSP_Message'(Kind => Answer_Msg,
                                 Answer_Kind => Answer_Data,
-                                Answer_Length => 1,
+                                Answer_Length => 2,
                                 Answer_Payload => [42, 42]);
       transition
          goto Send_Data_Answer
@@ -139,45 +122,51 @@ package RSP is
       end Send_Data_Answer;
 
       state Exception_Error is
-         Unused : Boolean;
       begin
-         Unused := Handle_Error (Got_Exception);
+         Result := Got_Exception;
       transition
-         goto null
+         goto Setup_Answer
       end Exception_Error;
 
       state Invalid_Packet_Error is
-         Unused : Boolean;
       begin
-         Unused := Handle_Error (Invalid_Packet);
+         Result := Invalid_Packet;
       transition
-         goto null
+         goto Setup_Answer
       end Invalid_Packet_Error;
 
       state Got_Answer_Packet_Error is
-         Unused : Boolean;
       begin
-         Unused := Handle_Error (Got_Answer_Packet);
+         Result := Got_Answer_Packet;
       transition
-         goto null
+         goto Setup_Answer
       end Got_Answer_Packet_Error;
 
-      state Stack_Id_Not_Set_Error is
-         Unused : Boolean;
-      begin
-         Unused := Handle_Error (Stack_Id_Not_Set);
-      transition
-         goto null
-      end Stack_Id_Not_Set_Error;
-
       state Stack_Full_Error is
-         Unused : Boolean;
       begin
-         Unused := Handle_Error (Stack_Full);
+         Result := Stack_Full;
       transition
-         goto null
+         goto Setup_Answer
       end Stack_Full_Error;
 
+      state Setup_Answer is
+      begin
+         Answer := RSP_Message'(Kind => Answer_Msg,
+                                Answer_Kind => Answer_Result,
+                                Answer_Server_Result => Result);
+      transition
+         goto Send_Answer
+      exception
+         goto null
+      end Setup_Answer;
+
+      state Send_Answer is
+      begin
+         Chan'Write(Answer);
+      transition
+         goto Receive_Request if Result = Ok
+         goto null
+      end Send_Answer;
    end Server;
 
 end RSP;

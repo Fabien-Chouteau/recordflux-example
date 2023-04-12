@@ -1,60 +1,97 @@
 with Ada.Text_IO;
+with Ada.Unchecked_Deallocation;
 
 with Interfaces; use Interfaces;
 
-with GNAT.Sockets; use GNAT.Sockets;
-with RSP_Server_Task;
+with Ada.Exceptions;
 
 with Server_Session;
 
+with RFLX.RSP.Server;
+with RFLX.RFLX_Types;
+with RFLX.RFLX_Builtin_Types;
+
+with Test_Channel;
+
 procedure RSP_Server is
 
-   Server_Port : constant := 4242;
+   package Server renames RFLX.RSP.Server;
+   package Types renames RFLX.RFLX_Types;
 
-   Server_Socket, Client_Socket : Socket_Type;
-   Address : Sock_Addr_Type;
-   Client_Id : Interfaces.Unsigned_32 := 0;
+   ----------
+   -- Read --
+   ----------
 
-   Max_Number_Of_Clients : constant := 16;
+   procedure Read (Ctx : in out Server_Session.Context) with
+      Pre =>
+         Server.Initialized (Ctx)
+         and then Server.Has_Data (Ctx, Server.C_Chan),
+      Post =>
+         Server.Initialized (Ctx)
+   is
+      Size : constant Types.Length :=
+        Server.Read_Buffer_Size (Ctx, Server.C_Chan);
+      Buffer : Types.Bytes (1 .. Types.Index (Size)) := (others => 0);
+   begin
+      Server.Read (Ctx, Server.C_Chan, Buffer);
 
-   Clients : array (1 .. Max_Number_Of_Clients) of RSP_Server_Task.Instance;
+      Ada.Text_IO.Put ("[Server] send: ");
+      Test_Channel.Print_Buffer (Buffer);
 
-begin
-   Address.Addr := Any_Inet_Addr;
-   Address.Port := Server_Port;
+      Test_Channel.Send (Test_Channel.Client, Buffer);
+   end Read;
 
-   Create_Socket (Server_Socket);
+   -----------
+   -- Write --
+   -----------
 
-   Set_Socket_Option (Server_Socket, Socket_Level, (Reuse_Address, True));
+   procedure Write (Ctx : in out Server_Session.Context) with
+      Pre =>
+         Server.Initialized (Ctx)
+         and then Server.Needs_Data (Ctx, Server.C_Chan),
+      Post =>
+         Server.Initialized (Ctx)
+   is
+      use type Types.Index;
+      use type Types.Length;
 
-   Bind_Socket (Server_Socket, Address);
+      procedure Free is new Ada.Unchecked_Deallocation
+        (RFLX.RFLX_Builtin_Types.Bytes,
+         RFLX.RFLX_Builtin_Types.Bytes_Ptr);
 
-   Listen_Socket (Server_Socket);
+      Request : RFLX.RFLX_Builtin_Types.Bytes_Ptr;
 
-   loop
-      Ada.Text_IO.Put_Line ("Accepting connection on port" & Server_Port'Img
-                            & "...");
-      Accept_Socket (Server_Socket, Client_Socket, Address);
+   begin
+      Test_Channel.Receive (Test_Channel.Server, Request);
 
-      if Client_Socket /= No_Socket then
-         Client_Id := Client_Id + 1;
-         Ada.Text_IO.Put_Line ("Connection Open. Client #" & Client_Id'Img);
+      Ada.Text_IO.Put ("[Server] receive: ");
+      Test_Channel.Print_Buffer (Request.all);
 
-         Find_Available:
-         for C of Clients loop
-            if C'Callable then
-               C.Start (Client_Socket, Client_Id);
-               Client_Socket := No_Socket;
-               exit Find_Available;
-            end if;
-         end loop Find_Available;
-
-         if Client_Socket /= No_Socket then
-            Ada.Text_IO.Put_Line ("Cannot find task for client...");
-            Close_Socket (Client_Socket);
-         end if;
-
+      if Request'Length <= Server.Write_Buffer_Size (Ctx, Server.C_Chan) then
+         Server.Write (Ctx, Server.C_Chan, Request.all);
       end if;
+
+      Free (Request);
+   end Write;
+
+   Ctx : Server_Session.Context;
+begin
+
+   Ada.Text_IO.Put_Line ("Starting server");
+
+   RFLX.RSP.Server.Initialize (Ctx);
+
+   while Ctx.Active loop
+      if Ctx.Has_Data (Server.C_Chan) then
+         Read (Ctx);
+      elsif Ctx.Needs_Data (Server.C_Chan) then
+         Write (Ctx);
+      end if;
+
+      Ctx.Run;
    end loop;
 
+   Ada.Text_IO.Put_Line ("Closing server");
+
+   Ctx.Finalize;
 end RSP_Server;
