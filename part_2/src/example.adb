@@ -1,15 +1,20 @@
-with RSP_Server;
 with RSP_Client;
+with RSP_Server;
+
+with Ada.Task_Identification;
 
 procedure Example is
-   task Client is
-   end Client;
 
-   task body Client is
+   task Server is
+   end Server;
+
+   task body Server is
    begin
-      RSP_Client;
-   end Client;
-begin
+      RSP_Server;
+   end Server;
 
-   RSP_Server;
+begin
+   RSP_Client;
+
+   Ada.Task_Identification.Abort_Task (Server'Identity);
 end Example;

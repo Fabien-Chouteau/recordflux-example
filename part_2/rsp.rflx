@@ -12,8 +12,14 @@ package RSP is
                         Answer_Result => 1)
       with Size => 8;
 
-   type Length is range 0 .. 255
+   type Length is range 0 .. 10
       with Size => 8;
+
+   type Payload is
+      message
+         Length : Length;
+         Data   : Opaque with Size => Length * 8;
+      end message;
 
    type Stack_Identifier is range 0 .. 9
       with Size => 8;
@@ -22,12 +28,9 @@ package RSP is
       message
          Stack_Id : Stack_Identifier;
          Kind : Request_Kind
-            then Length   if Kind = Request_Store
+            then Payload  if Kind = Request_Store
             then null     if Kind = Request_Get;
-         Length : Length
-            then Payload with Size => Length * 8;
-         Payload : Opaque
-            then null;
+         Payload : Payload;
       end message;
 
    type Server_Result_Kind is (Ok,
@@ -40,11 +43,9 @@ package RSP is
    type Answer_Message is
       message
          Kind : Answer_Kind
-            then Length if Kind = Answer_Data
+            then Payload if Kind = Answer_Data
             then Server_Result if Kind = Answer_Result;
-         Length : Length
-            then Payload with Size => Length * 8;
-         Payload : Opaque
+         Payload : Payload
             then null;
          Server_Result : Server_Result_Kind
             then null;
@@ -66,31 +67,32 @@ package RSP is
    generic
       Chan : Channel with Readable, Writable;
       with function Store_Data (Stack_Id : Stack_Identifier; Data : Opaque) return Store_Result;
+      with function Get_Data (Stack_Id : Stack_Identifier) return Payload;
    session Server is
-      Msg    : RSP_Message;
-      Answer : RSP_Message;
-      Result : Server_Result_Kind;
+      Request : RSP_Message;
+      Answer  : RSP_Message;
+      Result  : Server_Result_Kind;
    begin
 
       state Receive_Request is
       begin
-         Chan'Read(Msg);
+         Chan'Read (Request);
       transition
-         goto Invalid_Packet_Error    if Msg'Valid = False
-         goto Got_Answer_Packet_Error if Msg.Kind /= Request_Msg
-         goto Store                   if Msg.Request_Kind = Request_Store
-         goto Get                     if Msg.Request_Kind = Request_Get
+         goto Invalid_Packet_Error    if Request'Valid = False
+         goto Got_Answer_Packet_Error if Request.Kind /= Request_Msg
+         goto Store                   if Request.Request_Kind = Request_Store
+         goto Get                     if Request.Request_Kind = Request_Get
          goto Exception_Error
       end Receive_Request;
 
       state Store is
          St_Result : Store_Result;
       begin
-         St_Result := Store_Data (Msg.Request_Stack_Id, Msg.Request_Payload);
+         St_Result := Store_Data (Request.Request_Stack_Id,
+                                  Request.Request_Payload_Data);
       transition
          goto Stack_Full_Error if St_Result = Store_Fail
-         goto Answer_Success   if St_Result = Store_Ok
-         goto Receive_Request
+         goto Answer_Success
       exception
          goto Exception_Error
       end Store;
@@ -103,11 +105,13 @@ package RSP is
       end Answer_Success;
 
       state Get is
+         Payload : Payload;
       begin
+         Payload := Get_Data (Request.Request_Stack_Id);
          Answer := RSP_Message'(Kind => Answer_Msg,
                                 Answer_Kind => Answer_Data,
-                                Answer_Length => 2,
-                                Answer_Payload => [42, 42]);
+                                Answer_Payload_Length => Payload.Length,
+                                Answer_Payload_Data   => Payload.Data);
       transition
          goto Send_Data_Answer
       exception
@@ -118,7 +122,7 @@ package RSP is
       begin
          Chan'Write(Answer);
       transition
-         goto Receive_Data_Request
+         goto Receive_Request
       end Send_Data_Answer;
 
       state Exception_Error is
@@ -164,8 +168,7 @@ package RSP is
       begin
          Chan'Write(Answer);
       transition
-         goto Receive_Request if Result = Ok
-         goto null
+         goto Receive_Request
       end Send_Answer;
    end Server;
 

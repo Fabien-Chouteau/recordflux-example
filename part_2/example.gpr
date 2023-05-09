@@ -8,7 +8,9 @@ project Example is
    for Main use ("example.adb", "example.adb");
 
    package Compiler is
-      for Default_Switches ("Ada") use ("-Og", "-g", "-gnata");
+      for Default_Switches ("Ada") use ("-Og", "-g",
+                                        "-gnata",
+                                        "-gnateE");
    end Compiler;
 
    package Binder is

@@ -36,7 +36,7 @@ procedure RSP_Server is
       Server.Read (Ctx, Server.C_Chan, Buffer);
 
       Ada.Text_IO.Put ("[Server] send: ");
-      Test_Channel.Print_Buffer (Buffer);
+      Test_Channel.Print_Buffer (Buffer, 16);
 
       Test_Channel.Send (Test_Channel.Client, Buffer);
    end Read;
@@ -54,6 +54,7 @@ procedure RSP_Server is
    is
       use type Types.Index;
       use type Types.Length;
+      use type Types.Bytes_Ptr;
 
       procedure Free is new Ada.Unchecked_Deallocation
         (RFLX.RFLX_Builtin_Types.Bytes,
@@ -62,10 +63,13 @@ procedure RSP_Server is
       Request : RFLX.RFLX_Builtin_Types.Bytes_Ptr;
 
    begin
-      Test_Channel.Receive (Test_Channel.Server, Request);
+      loop
+         Test_Channel.Receive (Test_Channel.Server, Request);
+         exit when Request /= null;
+      end loop;
 
       Ada.Text_IO.Put ("[Server] receive: ");
-      Test_Channel.Print_Buffer (Request.all);
+      Test_Channel.Print_Buffer (Request.all, 16);
 
       if Request'Length <= Server.Write_Buffer_Size (Ctx, Server.C_Chan) then
          Server.Write (Ctx, Server.C_Chan, Request.all);
@@ -76,8 +80,6 @@ procedure RSP_Server is
 
    Ctx : Server_Session.Context;
 begin
-
-   Ada.Text_IO.Put_Line ("Starting server");
 
    RFLX.RSP.Server.Initialize (Ctx);
 
@@ -90,8 +92,6 @@ begin
 
       Ctx.Run;
    end loop;
-
-   Ada.Text_IO.Put_Line ("Closing server");
 
    Ctx.Finalize;
 end RSP_Server;

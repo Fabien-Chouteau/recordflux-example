@@ -28,13 +28,15 @@ package body Test_Channel is
    -- Print_Buffer --
    ------------------
 
-   procedure Print_Buffer (Buffer : RFLX.RFLX_Builtin_Types.Bytes) is
+   procedure Print_Buffer (Buffer : RFLX.RFLX_Builtin_Types.Bytes;
+                           Base   : Ada.Text_IO.Number_Base)
+   is
       package Byte_IO
       is new Ada.Text_IO.Modular_IO (RFLX.RFLX_Builtin_Types.Byte);
 
    begin
       for Elt of Buffer loop
-         Byte_IO.Put (Elt, Base => 16);
+         Byte_IO.Put (Elt, Width => 0, Base => Base);
          Ada.Text_IO.Put (' ');
       end loop;
       Ada.Text_IO.New_Line;

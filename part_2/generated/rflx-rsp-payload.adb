@@ -10,7 +10,7 @@ pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types.Operations;
 
-package body RFLX.RSP.Answer_Message with
+package body RFLX.RSP.Payload with
   SPARK_Mode
 is
 
@@ -25,7 +25,7 @@ is
       Buffer_First : constant RFLX_Types.Index := Buffer'First;
       Buffer_Last : constant RFLX_Types.Index := Buffer'Last;
    begin
-      Ctx := (Buffer_First, Buffer_Last, First, Last, First - 1, (if Written_Last = 0 then First - 1 else Written_Last), Buffer, (F_Kind => (State => S_Invalid, Predecessor => F_Initial), others => (State => S_Invalid, Predecessor => F_Final)));
+      Ctx := (Buffer_First, Buffer_Last, First, Last, First - 1, (if Written_Last = 0 then First - 1 else Written_Last), Buffer, (F_Length => (State => S_Invalid, Predecessor => F_Initial), others => (State => S_Invalid, Predecessor => F_Final)));
       Buffer := null;
    end Initialize;
 
@@ -36,7 +36,7 @@ is
 
    procedure Reset (Ctx : in out Context; First : RFLX_Types.Bit_Index; Last : RFLX_Types.Bit_Length) is
    begin
-      Ctx := (Ctx.Buffer_First, Ctx.Buffer_Last, First, Last, First - 1, First - 1, Ctx.Buffer, (F_Kind => (State => S_Invalid, Predecessor => F_Initial), others => (State => S_Invalid, Predecessor => F_Final)));
+      Ctx := (Ctx.Buffer_First, Ctx.Buffer_Last, First, Last, First - 1, First - 1, Ctx.Buffer, (F_Length => (State => S_Invalid, Predecessor => F_Initial), others => (State => S_Invalid, Predecessor => F_Final)));
    end Reset;
 
    procedure Take_Buffer (Ctx : in out Context; Buffer : out RFLX_Types.Bytes_Ptr) is
@@ -80,37 +80,23 @@ is
 
    function Successor (Ctx : Context; Fld : Field) return Virtual_Field is
      ((case Fld is
-          when F_Kind =>
-             (if
-                 RFLX_Types.Base_Integer (Ctx.Cursors (F_Kind).Value) = RFLX_Types.Base_Integer (To_Base_Integer (RFLX.RSP.Answer_Data))
-              then
-                 F_Payload_Length
-              elsif
-                 RFLX_Types.Base_Integer (Ctx.Cursors (F_Kind).Value) = RFLX_Types.Base_Integer (To_Base_Integer (RFLX.RSP.Answer_Result))
-              then
-                 F_Server_Result
-              else
-                 F_Initial),
-          when F_Payload_Length =>
-             F_Payload_Data,
-          when F_Server_Result | F_Payload_Data =>
+          when F_Length =>
+             F_Data,
+          when F_Data =>
              F_Final))
     with
      Pre =>
-       RFLX.RSP.Answer_Message.Has_Buffer (Ctx)
-       and RFLX.RSP.Answer_Message.Well_Formed (Ctx, Fld)
-       and RFLX.RSP.Answer_Message.Valid_Predecessor (Ctx, Fld);
+       RFLX.RSP.Payload.Has_Buffer (Ctx)
+       and RFLX.RSP.Payload.Well_Formed (Ctx, Fld)
+       and RFLX.RSP.Payload.Valid_Predecessor (Ctx, Fld);
 
    pragma Warnings (On, "precondition is always False");
 
    function Invalid_Successor (Ctx : Context; Fld : Field) return Boolean is
      ((case Fld is
-          when F_Kind =>
-             Invalid (Ctx.Cursors (F_Payload_Length))
-             and Invalid (Ctx.Cursors (F_Server_Result)),
-          when F_Payload_Length =>
-             Invalid (Ctx.Cursors (F_Payload_Data)),
-          when F_Server_Result | F_Payload_Data =>
+          when F_Length =>
+             Invalid (Ctx.Cursors (F_Data)),
+          when F_Data =>
              True));
 
    function Sufficient_Buffer_Length (Ctx : Context; Fld : Field) return Boolean is
@@ -120,13 +106,13 @@ is
       and Field_First (Ctx, Fld) + Field_Size (Ctx, Fld) - 1 <= Ctx.Written_Last)
     with
      Pre =>
-       RFLX.RSP.Answer_Message.Has_Buffer (Ctx)
-       and RFLX.RSP.Answer_Message.Valid_Next (Ctx, Fld);
+       RFLX.RSP.Payload.Has_Buffer (Ctx)
+       and RFLX.RSP.Payload.Valid_Next (Ctx, Fld);
 
    function Equal (Ctx : Context; Fld : Field; Data : RFLX_Types.Bytes) return Boolean is
      (Sufficient_Buffer_Length (Ctx, Fld)
       and then (case Fld is
-                   when F_Payload_Data =>
+                   when F_Data =>
                       Data'Length = RFLX_Types.To_Index (Field_Last (Ctx, Fld)) - RFLX_Types.To_Index (Field_First (Ctx, Fld)) + 1
                       and then (for all I in RFLX_Types.Index range RFLX_Types.To_Index (Field_First (Ctx, Fld)) .. RFLX_Types.To_Index (Field_Last (Ctx, Fld)) =>
                                    Ctx.Buffer.all (I) = Data (Data'First + (I - RFLX_Types.To_Index (Field_First (Ctx, Fld))))),
@@ -135,7 +121,7 @@ is
 
    procedure Reset_Dependent_Fields (Ctx : in out Context; Fld : Field) with
      Pre =>
-       RFLX.RSP.Answer_Message.Valid_Next (Ctx, Fld),
+       RFLX.RSP.Payload.Valid_Next (Ctx, Fld),
      Post =>
        Valid_Next (Ctx, Fld)
        and Invalid (Ctx.Cursors (Fld))
@@ -173,14 +159,14 @@ is
    end Reset_Dependent_Fields;
 
    function Composite_Field (Fld : Field) return Boolean is
-     (Fld in F_Payload_Data);
+     (Fld in F_Data);
 
    function Get (Ctx : Context; Fld : Field) return RFLX_Types.Base_Integer with
      Pre =>
-       RFLX.RSP.Answer_Message.Has_Buffer (Ctx)
-       and then RFLX.RSP.Answer_Message.Valid_Next (Ctx, Fld)
-       and then RFLX.RSP.Answer_Message.Sufficient_Buffer_Length (Ctx, Fld)
-       and then not RFLX.RSP.Answer_Message.Composite_Field (Fld)
+       RFLX.RSP.Payload.Has_Buffer (Ctx)
+       and then RFLX.RSP.Payload.Valid_Next (Ctx, Fld)
+       and then RFLX.RSP.Payload.Sufficient_Buffer_Length (Ctx, Fld)
+       and then not RFLX.RSP.Payload.Composite_Field (Fld)
    is
       First : constant RFLX_Types.Bit_Index := Field_First (Ctx, Fld);
       Last : constant RFLX_Types.Bit_Index := Field_Last (Ctx, Fld);
@@ -188,7 +174,7 @@ is
       Buffer_Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Last);
       Offset : constant RFLX_Types.Offset := RFLX_Types.Offset ((RFLX_Types.Byte'Size - Last mod RFLX_Types.Byte'Size) mod RFLX_Types.Byte'Size);
       Size : constant Positive := (case Fld is
-          when F_Kind | F_Payload_Length | F_Server_Result =>
+          when F_Length =>
              8,
           when others =>
              Positive'Last);
@@ -209,13 +195,9 @@ is
             Value := (if Composite_Field (Fld) then 0 else Get (Ctx, Fld));
             if
                Valid_Value (Fld, Value)
-               and then Field_Condition (Ctx, Fld, Value)
+               and then Field_Condition (Ctx, Fld)
             then
-               pragma Assert ((if
-                                  Fld = F_Payload_Data
-                                  or Fld = F_Server_Result
-                               then
-                                  Field_Last (Ctx, Fld) mod RFLX_Types.Byte'Size = 0));
+               pragma Assert ((if Fld = F_Data then Field_Last (Ctx, Fld) mod RFLX_Types.Byte'Size = 0));
                pragma Assert ((((Field_Last (Ctx, Fld) + RFLX_Types.Byte'Size - 1) / RFLX_Types.Byte'Size) * RFLX_Types.Byte'Size) mod RFLX_Types.Byte'Size = 0);
                Ctx.Verified_Last := ((Field_Last (Ctx, Fld) + RFLX_Types.Byte'Size - 1) / RFLX_Types.Byte'Size) * RFLX_Types.Byte'Size;
                pragma Assert (Field_Last (Ctx, Fld) <= Ctx.Verified_Last);
@@ -246,41 +228,36 @@ is
       end loop;
    end Verify_Message;
 
-   function Get_Payload_Data (Ctx : Context) return RFLX_Types.Bytes is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Payload_Data).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Payload_Data).Last);
+   function Get_Data (Ctx : Context) return RFLX_Types.Bytes is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Data).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Data).Last);
    begin
       return Ctx.Buffer.all (First .. Last);
-   end Get_Payload_Data;
+   end Get_Data;
 
-   procedure Get_Payload_Data (Ctx : Context; Data : out RFLX_Types.Bytes) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Payload_Data).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Payload_Data).Last);
+   procedure Get_Data (Ctx : Context; Data : out RFLX_Types.Bytes) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Data).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Data).Last);
    begin
       Data := (others => RFLX_Types.Byte'First);
       Data (Data'First .. Data'First + (Last - First)) := Ctx.Buffer.all (First .. Last);
-   end Get_Payload_Data;
+   end Get_Data;
 
-   procedure Generic_Get_Payload_Data (Ctx : Context) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Payload_Data).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Payload_Data).Last);
+   procedure Generic_Get_Data (Ctx : Context) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Data).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Data).Last);
    begin
-      Process_Payload_Data (Ctx.Buffer.all (First .. Last));
-   end Generic_Get_Payload_Data;
+      Process_Data (Ctx.Buffer.all (First .. Last));
+   end Generic_Get_Data;
 
    procedure Set (Ctx : in out Context; Fld : Field; Val : RFLX_Types.Base_Integer; Size : RFLX_Types.Bit_Length; State_Valid : Boolean; Buffer_First : out RFLX_Types.Index; Buffer_Last : out RFLX_Types.Index; Offset : out RFLX_Types.Offset) with
      Pre =>
-       RFLX.RSP.Answer_Message.Has_Buffer (Ctx)
-       and then RFLX.RSP.Answer_Message.Valid_Next (Ctx, Fld)
-       and then RFLX.RSP.Answer_Message.Valid_Value (Fld, Val)
-       and then RFLX.RSP.Answer_Message.Valid_Size (Ctx, Fld, Size)
-       and then Size <= RFLX.RSP.Answer_Message.Available_Space (Ctx, Fld)
-       and then (if
-                    RFLX.RSP.Answer_Message.Composite_Field (Fld)
-                 then
-                    Size mod RFLX_Types.Byte'Size = 0
-                 else
-                    State_Valid),
+       RFLX.RSP.Payload.Has_Buffer (Ctx)
+       and then RFLX.RSP.Payload.Valid_Next (Ctx, Fld)
+       and then RFLX.RSP.Payload.Valid_Value (Fld, Val)
+       and then RFLX.RSP.Payload.Valid_Size (Ctx, Fld, Size)
+       and then Size <= RFLX.RSP.Payload.Available_Space (Ctx, Fld)
+       and then (if RFLX.RSP.Payload.Composite_Field (Fld) then Size mod RFLX_Types.Byte'Size = 0 else State_Valid),
      Post =>
        Valid_Next (Ctx, Fld)
        and then Invalid_Successor (Ctx, Fld)
@@ -301,26 +278,11 @@ is
        and then Sufficient_Space (Ctx, Fld)
        and then (if State_Valid and Size > 0 then Valid (Ctx, Fld) else Well_Formed (Ctx, Fld))
        and then (case Fld is
-                    when F_Kind =>
-                       Get_Kind (Ctx) = To_Actual (Val)
-                       and (if
-                               RFLX_Types.Base_Integer (To_Base_Integer (Get_Kind (Ctx))) = RFLX_Types.Base_Integer (To_Base_Integer (RFLX.RSP.Answer_Data))
-                            then
-                               Predecessor (Ctx, F_Payload_Length) = F_Kind
-                               and Valid_Next (Ctx, F_Payload_Length))
-                       and (if
-                               RFLX_Types.Base_Integer (To_Base_Integer (Get_Kind (Ctx))) = RFLX_Types.Base_Integer (To_Base_Integer (RFLX.RSP.Answer_Result))
-                            then
-                               Predecessor (Ctx, F_Server_Result) = F_Kind
-                               and Valid_Next (Ctx, F_Server_Result)),
-                    when F_Payload_Length =>
-                       Get_Payload_Length (Ctx) = To_Actual (Val)
-                       and (Predecessor (Ctx, F_Payload_Data) = F_Payload_Length
-                            and Valid_Next (Ctx, F_Payload_Data)),
-                    when F_Server_Result =>
-                       Get_Server_Result (Ctx) = To_Actual (Val)
-                       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, Fld)),
-                    when F_Payload_Data =>
+                    when F_Length =>
+                       Get_Length (Ctx) = To_Actual (Val)
+                       and (Predecessor (Ctx, F_Data) = F_Length
+                            and Valid_Next (Ctx, F_Data)),
+                    when F_Data =>
                        (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, Fld)))
        and then (for all F in Field =>
                     (if F < Fld then Ctx.Cursors (F) = Ctx.Cursors'Old (F)))
@@ -339,10 +301,10 @@ is
       Ctx := Ctx'Update (Verified_Last => ((Last + RFLX_Types.Byte'Size - 1) / RFLX_Types.Byte'Size) * RFLX_Types.Byte'Size, Written_Last => ((Last + RFLX_Types.Byte'Size - 1) / RFLX_Types.Byte'Size) * RFLX_Types.Byte'Size);
       pragma Warnings (On, "attribute Update is an obsolescent feature");
       pragma Assert (Size = (case Fld is
-                         when F_Kind | F_Payload_Length | F_Server_Result =>
+                         when F_Length =>
                             8,
-                         when F_Payload_Data =>
-                            RFLX_Types.Bit_Length (Ctx.Cursors (F_Payload_Length).Value) * 8));
+                         when F_Data =>
+                            RFLX_Types.Bit_Length (Ctx.Cursors (F_Length).Value) * 8));
       if State_Valid then
          Ctx.Cursors (Fld) := (State => S_Valid, First => First, Last => Last, Value => Val, Predecessor => Ctx.Cursors (Fld).Predecessor);
       else
@@ -355,39 +317,24 @@ is
    procedure Set_Scalar (Ctx : in out Context; Fld : Field; Val : RFLX_Types.Base_Integer) with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.RSP.Answer_Message.Has_Buffer (Ctx)
-       and then RFLX.RSP.Answer_Message.Valid_Next (Ctx, Fld)
-       and then Fld in F_Kind | F_Payload_Length | F_Server_Result
-       and then RFLX.RSP.Answer_Message.Valid_Value (Fld, Val)
-       and then RFLX.RSP.Answer_Message.Valid_Size (Ctx, Fld, RFLX.RSP.Answer_Message.Field_Size (Ctx, Fld))
-       and then RFLX.RSP.Answer_Message.Available_Space (Ctx, Fld) >= RFLX.RSP.Answer_Message.Field_Size (Ctx, Fld)
-       and then RFLX.RSP.Answer_Message.Field_Size (Ctx, Fld) in 1 .. RFLX_Types.Base_Integer'Size
-       and then RFLX_Types.Fits_Into (Val, Natural (RFLX.RSP.Answer_Message.Field_Size (Ctx, Fld))),
+       and then RFLX.RSP.Payload.Has_Buffer (Ctx)
+       and then RFLX.RSP.Payload.Valid_Next (Ctx, Fld)
+       and then Fld in F_Length
+       and then RFLX.RSP.Payload.Valid_Value (Fld, Val)
+       and then RFLX.RSP.Payload.Valid_Size (Ctx, Fld, RFLX.RSP.Payload.Field_Size (Ctx, Fld))
+       and then RFLX.RSP.Payload.Available_Space (Ctx, Fld) >= RFLX.RSP.Payload.Field_Size (Ctx, Fld)
+       and then RFLX.RSP.Payload.Field_Size (Ctx, Fld) in 1 .. RFLX_Types.Base_Integer'Size
+       and then RFLX_Types.Fits_Into (Val, Natural (RFLX.RSP.Payload.Field_Size (Ctx, Fld))),
      Post =>
        Has_Buffer (Ctx)
        and Valid (Ctx, Fld)
        and Invalid_Successor (Ctx, Fld)
        and (case Fld is
-               when F_Kind =>
-                  Get_Kind (Ctx) = To_Actual (Val)
-                  and (if
-                          RFLX_Types.Base_Integer (To_Base_Integer (Get_Kind (Ctx))) = RFLX_Types.Base_Integer (To_Base_Integer (RFLX.RSP.Answer_Data))
-                       then
-                          Predecessor (Ctx, F_Payload_Length) = F_Kind
-                          and Valid_Next (Ctx, F_Payload_Length))
-                  and (if
-                          RFLX_Types.Base_Integer (To_Base_Integer (Get_Kind (Ctx))) = RFLX_Types.Base_Integer (To_Base_Integer (RFLX.RSP.Answer_Result))
-                       then
-                          Predecessor (Ctx, F_Server_Result) = F_Kind
-                          and Valid_Next (Ctx, F_Server_Result)),
-               when F_Payload_Length =>
-                  Get_Payload_Length (Ctx) = To_Actual (Val)
-                  and (Predecessor (Ctx, F_Payload_Data) = F_Payload_Length
-                       and Valid_Next (Ctx, F_Payload_Data)),
-               when F_Server_Result =>
-                  Get_Server_Result (Ctx) = To_Actual (Val)
-                  and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, Fld)),
-               when F_Payload_Data =>
+               when F_Length =>
+                  Get_Length (Ctx) = To_Actual (Val)
+                  and (Predecessor (Ctx, F_Data) = F_Length
+                       and Valid_Next (Ctx, F_Data)),
+               when F_Data =>
                   (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, Fld)))
        and (for all F in Field =>
                (if F < Fld then Ctx.Cursors (F) = Ctx.Cursors'Old (F)))
@@ -408,86 +355,89 @@ is
       RFLX_Types.Operations.Insert (Val, Ctx.Buffer, Buffer_First, Buffer_Last, Offset, Positive (Size), RFLX_Types.High_Order_First);
    end Set_Scalar;
 
-   procedure Set_Kind (Ctx : in out Context; Val : RFLX.RSP.Answer_Kind) is
+   procedure Set_Length (Ctx : in out Context; Val : RFLX.RSP.Length) is
    begin
-      Set_Scalar (Ctx, F_Kind, RFLX.RSP.To_Base_Integer (Val));
-   end Set_Kind;
+      Set_Scalar (Ctx, F_Length, RFLX.RSP.To_Base_Integer (Val));
+   end Set_Length;
 
-   procedure Set_Payload_Length (Ctx : in out Context; Val : RFLX.RSP.Length) is
-   begin
-      Set_Scalar (Ctx, F_Payload_Length, RFLX.RSP.To_Base_Integer (Val));
-   end Set_Payload_Length;
-
-   procedure Set_Server_Result (Ctx : in out Context; Val : RFLX.RSP.Server_Result_Kind) is
-   begin
-      Set_Scalar (Ctx, F_Server_Result, RFLX.RSP.To_Base_Integer (Val));
-   end Set_Server_Result;
-
-   procedure Set_Payload_Data_Empty (Ctx : in out Context) is
+   procedure Set_Data_Empty (Ctx : in out Context) is
       Unused_Buffer_First, Unused_Buffer_Last : RFLX_Types.Index;
       Unused_Offset : RFLX_Types.Offset;
    begin
-      Set (Ctx, F_Payload_Data, 0, 0, True, Unused_Buffer_First, Unused_Buffer_Last, Unused_Offset);
-   end Set_Payload_Data_Empty;
+      Set (Ctx, F_Data, 0, 0, True, Unused_Buffer_First, Unused_Buffer_Last, Unused_Offset);
+   end Set_Data_Empty;
 
-   procedure Initialize_Payload_Data_Private (Ctx : in out Context; Length : RFLX_Types.Length) with
+   procedure Initialize_Data_Private (Ctx : in out Context; Length : RFLX_Types.Length) with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.RSP.Answer_Message.Has_Buffer (Ctx)
-       and then RFLX.RSP.Answer_Message.Valid_Next (Ctx, RFLX.RSP.Answer_Message.F_Payload_Data)
-       and then RFLX.RSP.Answer_Message.Valid_Length (Ctx, RFLX.RSP.Answer_Message.F_Payload_Data, Length)
-       and then RFLX_Types.To_Length (RFLX.RSP.Answer_Message.Available_Space (Ctx, RFLX.RSP.Answer_Message.F_Payload_Data)) >= Length
-       and then RFLX.RSP.Answer_Message.Field_First (Ctx, RFLX.RSP.Answer_Message.F_Payload_Data) mod RFLX_Types.Byte'Size = 1,
+       and then RFLX.RSP.Payload.Has_Buffer (Ctx)
+       and then RFLX.RSP.Payload.Valid_Next (Ctx, RFLX.RSP.Payload.F_Data)
+       and then RFLX.RSP.Payload.Valid_Length (Ctx, RFLX.RSP.Payload.F_Data, Length)
+       and then RFLX_Types.To_Length (RFLX.RSP.Payload.Available_Space (Ctx, RFLX.RSP.Payload.F_Data)) >= Length
+       and then RFLX.RSP.Payload.Field_First (Ctx, RFLX.RSP.Payload.F_Data) mod RFLX_Types.Byte'Size = 1,
      Post =>
        Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Payload_Data)
-       and Field_Size (Ctx, F_Payload_Data) = RFLX_Types.To_Bit_Length (Length)
-       and Ctx.Verified_Last = Field_Last (Ctx, F_Payload_Data)
+       and Well_Formed (Ctx, F_Data)
+       and Field_Size (Ctx, F_Data) = RFLX_Types.To_Bit_Length (Length)
+       and Ctx.Verified_Last = Field_Last (Ctx, F_Data)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Predecessor (Ctx, F_Payload_Data) = Predecessor (Ctx, F_Payload_Data)'Old
-       and Valid_Next (Ctx, F_Payload_Data) = Valid_Next (Ctx, F_Payload_Data)'Old
-       and Get_Kind (Ctx) = Get_Kind (Ctx)'Old
-       and Get_Payload_Length (Ctx) = Get_Payload_Length (Ctx)'Old
-       and Field_First (Ctx, F_Payload_Data) = Field_First (Ctx, F_Payload_Data)'Old
-       and Field_Last (Ctx, F_Payload_Data) = Field_Last (Ctx, Predecessor (Ctx, F_Payload_Data)) + Field_Size (Ctx, F_Payload_Data)
+       and Predecessor (Ctx, F_Data) = Predecessor (Ctx, F_Data)'Old
+       and Valid_Next (Ctx, F_Data) = Valid_Next (Ctx, F_Data)'Old
+       and Get_Length (Ctx) = Get_Length (Ctx)'Old
+       and Field_First (Ctx, F_Data) = Field_First (Ctx, F_Data)'Old
+       and Field_Last (Ctx, F_Data) = Field_Last (Ctx, Predecessor (Ctx, F_Data)) + Field_Size (Ctx, F_Data)
    is
-      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Payload_Data);
-      Last : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Payload_Data) + RFLX_Types.Bit_Length (Length) * RFLX_Types.Byte'Size - 1;
+      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Data);
+      Last : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Data) + RFLX_Types.Bit_Length (Length) * RFLX_Types.Byte'Size - 1;
    begin
       pragma Assert (Last mod RFLX_Types.Byte'Size = 0);
-      Reset_Dependent_Fields (Ctx, F_Payload_Data);
+      Reset_Dependent_Fields (Ctx, F_Data);
       pragma Warnings (Off, "attribute Update is an obsolescent feature");
       Ctx := Ctx'Update (Verified_Last => Last, Written_Last => Last);
       pragma Warnings (On, "attribute Update is an obsolescent feature");
-      Ctx.Cursors (F_Payload_Data) := (State => S_Well_Formed, First => First, Last => Last, Value => 0, Predecessor => Ctx.Cursors (F_Payload_Data).Predecessor);
-      Ctx.Cursors (Successor (Ctx, F_Payload_Data)) := (State => S_Invalid, Predecessor => F_Payload_Data);
-   end Initialize_Payload_Data_Private;
+      Ctx.Cursors (F_Data) := (State => S_Well_Formed, First => First, Last => Last, Value => 0, Predecessor => Ctx.Cursors (F_Data).Predecessor);
+      Ctx.Cursors (Successor (Ctx, F_Data)) := (State => S_Invalid, Predecessor => F_Data);
+   end Initialize_Data_Private;
 
-   procedure Initialize_Payload_Data (Ctx : in out Context) is
+   procedure Initialize_Data (Ctx : in out Context) is
    begin
-      Initialize_Payload_Data_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Payload_Data)));
-   end Initialize_Payload_Data;
+      Initialize_Data_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Data)));
+   end Initialize_Data;
 
-   procedure Set_Payload_Data (Ctx : in out Context; Data : RFLX_Types.Bytes) is
-      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Payload_Data));
+   procedure Set_Data (Ctx : in out Context; Data : RFLX_Types.Bytes) is
+      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Data));
       Buffer_Last : constant RFLX_Types.Index := Buffer_First + Data'Length - 1;
    begin
-      Initialize_Payload_Data_Private (Ctx, Data'Length);
-      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Payload_Data)));
+      Initialize_Data_Private (Ctx, Data'Length);
+      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Data)));
       Ctx.Buffer.all (Buffer_First .. Buffer_Last) := Data;
-      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Payload_Data)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Payload_Data))) = Data);
-   end Set_Payload_Data;
+      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Data)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Data))) = Data);
+   end Set_Data;
 
-   procedure Generic_Set_Payload_Data (Ctx : in out Context; Length : RFLX_Types.Length) is
-      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Payload_Data);
+   procedure Generic_Set_Data (Ctx : in out Context; Length : RFLX_Types.Length) is
+      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Data);
       Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (First);
       Buffer_Last : constant RFLX_Types.Index := RFLX_Types.To_Index (First + RFLX_Types.To_Bit_Length (Length) - 1);
    begin
-      Process_Payload_Data (Ctx.Buffer.all (Buffer_First .. Buffer_Last));
-      Initialize_Payload_Data_Private (Ctx, Length);
-   end Generic_Set_Payload_Data;
+      Process_Data (Ctx.Buffer.all (Buffer_First .. Buffer_Last));
+      Initialize_Data_Private (Ctx, Length);
+   end Generic_Set_Data;
 
-end RFLX.RSP.Answer_Message;
+   procedure To_Structure (Ctx : Context; Struct : out Structure) is
+   begin
+      Struct.Length := Get_Length (Ctx);
+      Struct.Data := (others => 0);
+      Get_Data (Ctx, Struct.Data (Struct.Data'First .. Struct.Data'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Data)) + 1) - 2));
+   end To_Structure;
+
+   procedure To_Context (Struct : Structure; Ctx : in out Context) is
+   begin
+      Reset (Ctx);
+      Set_Length (Ctx, Struct.Length);
+      Set_Data (Ctx, Struct.Data (Struct.Data'First .. Struct.Data'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Length) * 8) + 1) - 2));
+   end To_Context;
+
+end RFLX.RSP.Payload;
