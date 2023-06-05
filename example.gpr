@@ -11,6 +11,10 @@ project Example is
       for Default_Switches ("Ada") use ("-Og", "-g", "-gnata");
    end Compiler;
 
+   package Recordflux is
+      for Output_Dir use "generated";
+   end Recordflux;
+
    package Binder is
       for Switches ("Ada") use ("-Es");
    end Binder;
