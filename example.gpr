@@ -15,6 +15,19 @@ project Example is
       for Output_Dir use "generated";
    end Recordflux;
 
+   package Prove is
+      for Proof_Switches ("Ada") use (
+         "-j0",
+         "--prover=z3,cvc5,altergo,colibri",
+         "--steps=0",
+         "--timeout=180",
+         "--memlimit=2000",
+         "--checks-as-errors",
+         "--warnings=error",
+         "--counterexamples=off"
+      );
+   end Prove;
+
    package Binder is
       for Switches ("Ada") use ("-Es");
    end Binder;
