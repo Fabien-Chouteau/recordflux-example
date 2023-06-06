@@ -10,6 +10,7 @@ package RSP is
    type Request_Message is
       message
          Kind    : Request_Kind
+            then null if Kind = Request_Get
             then Length if Kind = Request_Store;
 
          Length  : Payload_Length
@@ -27,6 +28,7 @@ package RSP is
          Stack_Id : Stack_Identifier;
 
          Kind    : Request_Kind
+            then null if Kind = Request_Get
             then Length if Kind = Request_Store;
 
          Length  : Payload_Length
